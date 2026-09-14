@@ -26,8 +26,8 @@ RUN curl -fsSL \
  && chmod 0755 /out/xray /out/tun2socks \
  && ls -la /out/xray /out/tun2socks
 
-# --- Runtime: Debian armel (Alpine has no ARMv5) ---
-FROM --platform=linux/arm/v5 debian:bookworm-slim
+# --- Runtime: Debian armel (library/debian has no arm/v5; use arm32v5/*) ---
+FROM --platform=linux/arm/v5 arm32v5/debian:bookworm-slim
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
