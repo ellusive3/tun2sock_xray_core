@@ -1,0 +1,36 @@
+{
+  "inbounds": [
+    {
+      "port": 1080,
+      "listen": "127.0.0.1",
+      "protocol": "socks",
+      "settings": { "udp": true }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [{
+          "address": "89.47.55.8",
+          "port": 8443,
+          "users": [{ "id": "60fb85cf-6caf-7cf3-43ed-d4ced1405abc", "encryption": "none" }]
+        }]
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "TunService"
+        },
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "cdn.steamstatic.com",
+          "fingerprint": "chrome",
+          "publicKey": "sRTNjrosfFSiuQX7Yt7Ub5DJvFznfHSC3nlzFQ3H2WU",
+          "shortId": "",
+          "spiderX": "/"
+        }
+      }
+    }
+  ]
+}
