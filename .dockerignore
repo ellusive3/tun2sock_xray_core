@@ -1,5 +1,6 @@
 .git
 .github
+.cursor
 *.md
 config.json
 agent-transcripts

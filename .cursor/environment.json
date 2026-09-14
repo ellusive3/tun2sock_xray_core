@@ -1,0 +1,6 @@
+{
+  "name": "tun2socks-xray ARMv5 image builder",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh"
+}
