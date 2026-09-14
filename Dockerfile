@@ -1,7 +1,12 @@
-FROM --platform=linux/arm/v5 alpine:latest
+FROM --platform=linux/arm/v5 debian:stable-slim
 
-# Устанавливаем необходимые сетевые утилиты
-RUN apk add --no-cache iptables iproute2 curl unzip
+# Устанавливаем необходимые сетевые утилиты через apt
+RUN apt-get update && apt-get install -y \
+    iptables \
+    iproute2 \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Скачиваем и распаковываем актуальный Xray-core для armv5
 RUN curl -L -o /tmp/xray.zip https://github.com && \
@@ -16,9 +21,8 @@ RUN curl -L -o /tmp/tun2socks.zip https://github.com && \
     chmod +x /usr/local/bin/tun2socks && \
     rm -rf /tmp/tun2socks.zip
 
-# Копируем конфигурацию и скрипт запуска
-COPY config.json /etc/xray/config.json
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
