@@ -26,19 +26,35 @@ sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1 || true
 sysctl -w net.ipv4.conf."$OUT_INTERFACE".rp_filter=0 >/dev/null 2>&1 || true
 
+# RouterOS container kernel often rejects iptables-nft; prefer legacy and never abort.
+if command -v iptables-legacy >/dev/null 2>&1; then
+  IPTABLES=iptables-legacy
+elif command -v iptables >/dev/null 2>&1; then
+  IPTABLES=iptables
+else
+  IPTABLES=
+fi
+
+iptables_try() {
+  if [ -n "$IPTABLES" ]; then
+    "$IPTABLES" "$@" 2>/dev/null || true
+  fi
+}
+
 if [ "$GATEWAY_MODE" = "1" ]; then
-  # Locally generated traffic (Xray → VLESS server) stays on main table via eth0 GW.
+  # Locally generated traffic (Xray → VLESS) stays on main table via eth0 GW.
   # Packets arriving from the router on eth0 are policy-routed into TUN.
   ip route replace default dev "$TUN_DEVICE" table 100
   ip rule del iif "$OUT_INTERFACE" lookup 100 2>/dev/null || true
   ip rule add iif "$OUT_INTERFACE" lookup 100 priority 100
 
-  iptables -C FORWARD -i "$OUT_INTERFACE" -o "$TUN_DEVICE" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$OUT_INTERFACE" -o "$TUN_DEVICE" -j ACCEPT
-  iptables -C FORWARD -i "$TUN_DEVICE" -o "$OUT_INTERFACE" -j ACCEPT 2>/dev/null \
-    || iptables -A FORWARD -i "$TUN_DEVICE" -o "$OUT_INTERFACE" -j ACCEPT
-  iptables -t nat -C POSTROUTING -o "$TUN_DEVICE" -j MASQUERADE 2>/dev/null \
-    || iptables -t nat -A POSTROUTING -o "$TUN_DEVICE" -j MASQUERADE
+  # Optional; MikroTik usually SNATs toward veth already. Do not fail startup.
+  iptables_try -C FORWARD -i "$OUT_INTERFACE" -o "$TUN_DEVICE" -j ACCEPT \
+    || iptables_try -A FORWARD -i "$OUT_INTERFACE" -o "$TUN_DEVICE" -j ACCEPT
+  iptables_try -C FORWARD -i "$TUN_DEVICE" -o "$OUT_INTERFACE" -j ACCEPT \
+    || iptables_try -A FORWARD -i "$TUN_DEVICE" -o "$OUT_INTERFACE" -j ACCEPT
+  iptables_try -t nat -C POSTROUTING -o "$TUN_DEVICE" -j MASQUERADE \
+    || iptables_try -t nat -A POSTROUTING -o "$TUN_DEVICE" -j MASQUERADE
 fi
 
 cleanup() {

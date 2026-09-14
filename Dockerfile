@@ -35,6 +35,8 @@ RUN apt-get update \
       iproute2 \
       iptables \
       procps \
+ && update-alternatives --set iptables /usr/sbin/iptables-legacy \
+ && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /etc/xray
 
