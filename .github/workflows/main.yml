@@ -8,8 +8,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout your code
         uses: actions/checkout@v4
+
+      # Скачиваем исходный код Xray на быстром и стабильном хосте
+      - name: Clone Xray Source
+        run: git clone --depth 1 https://github.com xray-src
+
+      # Скачиваем исходный код tun2socks на быстром и стабильном хосте
+      - name: Clone tun2socks Source
+        run: git clone --depth 1 https://github.com tun2socks-src
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
