@@ -5,8 +5,8 @@ TUN_DEVICE="${TUN_DEVICE:-tun0}"
 TUN_ADDR="${TUN_ADDR:-198.18.0.1/15}"
 XRAY_CONFIG="${XRAY_CONFIG:-/etc/xray/config.json}"
 SOCKS_PROXY="${SOCKS_PROXY:-socks5://127.0.0.1:1080}"
-OUT_INTERFACE="${OUT_INTERFACE:-eth0}"
-# 1 = accept traffic from MikroTik (eth0) and send it into TUN
+OUT_INTERFACE="${OUT_INTERFACE:-}"
+# 1 = accept traffic from MikroTik (eth0/veth) and send it into TUN
 GATEWAY_MODE="${GATEWAY_MODE:-1}"
 
 if [ ! -f "$XRAY_CONFIG" ]; then
@@ -14,6 +14,39 @@ if [ ! -f "$XRAY_CONFIG" ]; then
   echo "Mount config.json to /etc/xray/config.json (MikroTik /container/mounts)." >&2
   exit 1
 fi
+
+resolve_out_interface() {
+  if [ -n "$OUT_INTERFACE" ] && [ -e "/sys/class/net/$OUT_INTERFACE" ]; then
+    printf '%s\n' "$OUT_INTERFACE"
+    return 0
+  fi
+
+  # Prefer the interface used by the default route (MikroTik veth gateway).
+  iface=$(ip -4 route show default 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit }}')
+  if [ -n "$iface" ] && [ -e "/sys/class/net/$iface" ]; then
+    printf '%s\n' "$iface"
+    return 0
+  fi
+
+  # Fallback: first non-loopback / non-TUN iface.
+  for path in /sys/class/net/*; do
+    name=$(basename "$path")
+    case "$name" in
+      lo|tun*|docker*|br-*|cni*|flannel*|wg*) continue ;;
+    esac
+    printf '%s\n' "$name"
+    return 0
+  done
+
+  return 1
+}
+
+OUT_INTERFACE=$(resolve_out_interface) || {
+  echo "error: could not detect outbound interface" >&2
+  ip -o link show >&2 || true
+  exit 1
+}
+echo "using outbound interface: $OUT_INTERFACE"
 
 if [ ! -e "/sys/class/net/$TUN_DEVICE" ]; then
   ip tuntap add mode tun dev "$TUN_DEVICE"
@@ -42,8 +75,8 @@ iptables_try() {
 }
 
 if [ "$GATEWAY_MODE" = "1" ]; then
-  # Locally generated traffic (Xray → VLESS) stays on main table via eth0 GW.
-  # Packets arriving from the router on eth0 are policy-routed into TUN.
+  # Locally generated traffic (Xray → VLESS) stays on main table via default GW.
+  # Packets arriving from the router are policy-routed into TUN.
   ip route replace default dev "$TUN_DEVICE" table 100
   ip rule del iif "$OUT_INTERFACE" lookup 100 2>/dev/null || true
   ip rule add iif "$OUT_INTERFACE" lookup 100 priority 100

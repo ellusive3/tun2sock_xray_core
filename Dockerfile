@@ -51,7 +51,6 @@ ENV TUN_DEVICE=tun0 \
     TUN_ADDR=198.18.0.1/15 \
     XRAY_CONFIG=/etc/xray/config.json \
     SOCKS_PROXY=socks5://127.0.0.1:1080 \
-    OUT_INTERFACE=eth0 \
     GATEWAY_MODE=1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
