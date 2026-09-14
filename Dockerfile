@@ -1,24 +1,28 @@
+# === Stage 1: Build Xray and tun2socks from source using Go ===
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+
+# Build Xray-core
+RUN apk add --no-cache git
+RUN git clone https://github.com /src/xray
+WORKDIR /src/xray
+RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/xray -v ./main
+
+# Build tun2socks
+RUN git clone https://github.com /src/tun2socks
+WORKDIR /src/tun2socks
+RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/tun2socks -v
+
+# === Stage 2: Create the final lightweight ARMv5 image ===
 FROM --platform=linux/arm/v5 debian:stable-slim
 
-# 1. Обновляем пакеты и ставим базовые утилиты
-RUN apt-get update
-RUN apt-get install -y iptables iproute2 curl unzip ca-certificates
-RUN rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y iptables iproute2 && rm -rf /var/lib/apt/lists/*
 
-# 2. Скачиваем Xray-core (без использования кавычек)
-RUN curl -L -o /tmp/xray.zip https://github.com
-RUN unzip /tmp/xray.zip -d /usr/local/bin/
-RUN chmod +x /usr/local/bin/xray
-RUN rm -rf /tmp/xray.zip
+# Copy binaries from the builder stage
+COPY --from=builder /out/xray /usr/local/bin/xray
+COPY --from=builder /out/tun2socks /usr/local/bin/tun2socks
 
-# 3. Скачиваем tun2socks (без использования кавычек)
-RUN curl -L -o /tmp/tun2socks.zip https://github.com
-RUN unzip /tmp/tun2socks.zip -d /tmp/
-RUN mv /tmp/tun2socks-linux-armv5 /usr/local/bin/tun2socks
-RUN chmod +x /usr/local/bin/tun2socks
-RUN rm -rf /tmp/tun2socks.zip
+RUN chmod +x /usr/local/bin/xray /usr/local/bin/tun2socks
 
-# 4. Копируем скрипт запуска
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
