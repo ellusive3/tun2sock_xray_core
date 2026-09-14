@@ -1,32 +1,54 @@
-# === Stage 1: Compile binaries using native Go ===
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+# syntax=docker/dockerfile:1
+# Target: MikroTik hEX S (E60iUGS) / EN7562CT — only linux/arm/v5 (arm32v5)
 
-# Install git since it's required for some internal go module resolutions
-RUN apk add --no-cache git
+ARG XRAY_VERSION=v26.3.27
+ARG TUN2SOCKS_VERSION=v2.7.0
 
-# Compile Xray from locally copied sources
-COPY xray-src /src/xray
-WORKDIR /src/xray
-# Changed from ./main to . (the root directory)
-RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/xray -v .
+# --- Download official ARMv5 binaries (cross-platform, no QEMU compile) ---
+FROM --platform=$BUILDPLATFORM alpine:3.21 AS downloader
 
-# Compile tun2socks from locally copied sources
-COPY tun2socks-src /src/tun2socks
-WORKDIR /src/tun2socks
-RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/tun2socks -v
+ARG XRAY_VERSION
+ARG TUN2SOCKS_VERSION
 
-# === Stage 2: Build final lightweight ARMv5 image ===
-FROM --platform=linux/arm/v5 debian:stable-slim
+RUN apk add --no-cache ca-certificates curl unzip
 
-RUN apt-get update && apt-get install -y iptables iproute2 && rm -rf /var/lib/apt/lists/*
+WORKDIR /tmp
 
-# Copy compiled files over
-COPY --from=builder /out/xray /usr/local/bin/xray
-COPY --from=builder /out/tun2socks /usr/local/bin/tun2socks
+RUN curl -fsSL \
+      -o xray.zip \
+      "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-arm32-v5.zip" \
+ && unzip -j xray.zip xray -d /out \
+ && curl -fsSL \
+      -o tun2socks.zip \
+      "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION}/tun2socks-linux-armv5.zip" \
+ && unzip -j tun2socks.zip -d /tmp/tun \
+ && mv /tmp/tun/tun2socks-linux-armv5 /out/tun2socks \
+ && chmod 0755 /out/xray /out/tun2socks \
+ && ls -la /out/xray /out/tun2socks
 
-RUN chmod +x /usr/local/bin/xray /usr/local/bin/tun2socks
+# --- Runtime: Debian armel (Alpine has no ARMv5) ---
+FROM --platform=linux/arm/v5 debian:bookworm-slim
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      iproute2 \
+      iptables \
+      procps \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /etc/xray
+
+COPY --from=downloader /out/xray /usr/local/bin/xray
+COPY --from=downloader /out/tun2socks /usr/local/bin/tun2socks
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+
+RUN chmod 0755 /usr/local/bin/xray /usr/local/bin/tun2socks /usr/local/bin/entrypoint.sh
+
+# Mount your config on MikroTik: /etc/xray/config.json
+ENV TUN_DEVICE=tun0 \
+    TUN_ADDR=198.18.0.3/15 \
+    XRAY_CONFIG=/etc/xray/config.json \
+    SOCKS_PROXY=socks5://127.0.0.1:1080 \
+    OUT_INTERFACE=eth0
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

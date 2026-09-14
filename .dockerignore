@@ -1,0 +1,6 @@
+.git
+.github
+*.md
+config.json
+agent-transcripts
+agent-tools

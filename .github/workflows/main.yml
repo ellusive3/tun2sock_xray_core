@@ -2,52 +2,80 @@ name: Build ARMv5 Image
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      xray_version:
+        description: "Xray-core release tag"
+        required: false
+        default: "v26.3.27"
+      tun2socks_version:
+        description: "tun2socks release tag"
+        required: false
+        default: "v2.7.0"
+
+env:
+  XRAY_VERSION: ${{ github.event.inputs.xray_version || 'v26.3.27' }}
+  TUN2SOCKS_VERSION: ${{ github.event.inputs.tun2socks_version || 'v2.7.0' }}
+  IMAGE_NAME: xray-tun2socks
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. Скачиваем код вашего репозитория (где лежит Dockerfile и entrypoint.sh)
-      - name: Checkout your repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Скачиваем исходники Xray в папку xray-src через официальный экшен
-      - name: Checkout Xray Source
-        uses: actions/checkout@v4
-        with:
-          repository: XTLS/Xray-core
-          path: xray-src
-          fetch-depth: 1
-
-      # 3. Скачиваем исходники tun2socks в папку tun2socks-src через официальный экшен
-      - name: Checkout tun2socks Source
-        uses: actions/checkout@v4
-        with:
-          repository: xjasonlyu/tun2socks
-          path: tun2socks-src
-          fetch-depth: 1
-
-      # 4. Настраиваем эмуляторы архитектур
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 5. Инициализируем сборщик Docker
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 6. Авторизуемся на Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 7. Запускаем сборку контейнера комбайна под arm/v5
-      - name: Build and push
+      # provenance/sbom attestations break RouterOS remote pull / extract on some versions
+      - name: Build and push linux/arm/v5
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/arm/v5
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/xray-tun2socks:latest
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            XRAY_VERSION=${{ env.XRAY_VERSION }}
+            TUN2SOCKS_VERSION=${{ env.TUN2SOCKS_VERSION }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:armv5
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.XRAY_VERSION }}-${{ env.TUN2SOCKS_VERSION }}
+
+      # Prefer importing this .tar on E60iUGS if Docker Hub pull fails with "failed to extract layer"
+      - name: Export image tar for MikroTik
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm/v5
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          build-args: |
+            XRAY_VERSION=${{ env.XRAY_VERSION }}
+            TUN2SOCKS_VERSION=${{ env.TUN2SOCKS_VERSION }}
+          tags: ${{ env.IMAGE_NAME }}:armv5
+          outputs: type=docker,dest=/tmp/${{ env.IMAGE_NAME }}-armv5.tar
+
+      - name: Upload MikroTik image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IMAGE_NAME }}-armv5
+          path: /tmp/${{ env.IMAGE_NAME }}-armv5.tar
+          if-no-files-found: error
