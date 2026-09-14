@@ -38,11 +38,11 @@ RUN apt-get update \
       iptables \
       procps \
       traceroute \
-    && mkdir -p /etc/xray /usr/local/bin \
     && update-alternatives --set iptables /usr/sbin/iptables-legacy \
     && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy \
     && ln -sf "$(command -v traceroute)" /usr/local/bin/tracert \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /etc/xray /usr/local/bin
 
 COPY --from=downloader ["/out/xray", "/usr/local/bin/xray"]
 COPY --from=downloader ["/out/tun2socks", "/usr/local/bin/tun2socks"]
