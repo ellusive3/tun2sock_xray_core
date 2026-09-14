@@ -1,22 +1,26 @@
-# === Stage 1: Компиляция бинарников через нативный Go ===
+# === Stage 1: Compile binaries using native Go ===
 FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
 
-# Компилируем Xray из локально скопированных исходников
+# Install git since it's required for some internal go module resolutions
+RUN apk add --no-cache git
+
+# Compile Xray from locally copied sources
 COPY xray-src /src/xray
 WORKDIR /src/xray
-RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/xray -v ./main
+# Changed from ./main to . (the root directory)
+RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/xray -v .
 
-# Компилируем tun2socks из локально скопированных исходников
+# Compile tun2socks from locally copied sources
 COPY tun2socks-src /src/tun2socks
 WORKDIR /src/tun2socks
 RUN env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=5 go build -o /out/tun2socks -v
 
-# === Stage 2: Сборка финального легкого образа ARMv5 ===
+# === Stage 2: Build final lightweight ARMv5 image ===
 FROM --platform=linux/arm/v5 debian:stable-slim
 
 RUN apt-get update && apt-get install -y iptables iproute2 && rm -rf /var/lib/apt/lists/*
 
-# Переносим готовые скомпилированные файлы
+# Copy compiled files over
 COPY --from=builder /out/xray /usr/local/bin/xray
 COPY --from=builder /out/tun2socks /usr/local/bin/tun2socks
 
