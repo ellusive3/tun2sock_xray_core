@@ -83,6 +83,6 @@ done
 trap - EXIT INT TERM
 
 exec /usr/local/bin/tun2socks \
-  -device "$TUN_DEVICE" \
-  -proxy "$SOCKS_PROXY" \
-  -interface "$OUT_INTERFACE"
+  --device "$TUN_DEVICE" \
+  --proxy "$SOCKS_PROXY" \
+  --interface "$OUT_INTERFACE"
