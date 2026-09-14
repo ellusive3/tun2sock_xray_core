@@ -32,13 +32,17 @@ FROM --platform=linux/arm/v5 arm32v5/debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ca-certificates \
+      dnsutils \
+      iputils-ping \
       iproute2 \
       iptables \
       procps \
+      traceroute \
+    && mkdir -p /etc/xray /usr/local/bin \
     && update-alternatives --set iptables /usr/sbin/iptables-legacy \
     && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /etc/xray /usr/local/bin
+    && ln -sf "$(command -v traceroute)" /usr/local/bin/tracert \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=downloader ["/out/xray", "/usr/local/bin/xray"]
 COPY --from=downloader ["/out/tun2socks", "/usr/local/bin/tun2socks"]
