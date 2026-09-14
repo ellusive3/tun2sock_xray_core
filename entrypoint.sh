@@ -78,6 +78,13 @@ if [ "$GATEWAY_MODE" = "1" ]; then
   # Locally generated traffic (Xray → VLESS) stays on main table via default GW.
   # Packets arriving from the router are policy-routed into TUN.
   ip route replace default dev "$TUN_DEVICE" table 100
+  CONTAINER_IPV4=$(ip -4 -o addr show dev "$OUT_INTERFACE" scope global 2>/dev/null | awk '{split($4, a, "/"); print a[1]; exit}')
+  if [ -n "$CONTAINER_IPV4" ]; then
+    # Keep replies to the container's own address local even when iif policy routing is enabled.
+    ip route replace local "$CONTAINER_IPV4"/32 dev lo table 100
+  else
+    echo "warning: could not detect container IPv4 on $OUT_INTERFACE; local route in table 100 not set" >&2
+  fi
   ip rule del iif "$OUT_INTERFACE" lookup 100 2>/dev/null || true
   ip rule add iif "$OUT_INTERFACE" lookup 100 priority 100
 
