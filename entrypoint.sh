@@ -2,10 +2,12 @@
 set -eu
 
 TUN_DEVICE="${TUN_DEVICE:-tun0}"
-TUN_ADDR="${TUN_ADDR:-198.18.0.3/15}"
+TUN_ADDR="${TUN_ADDR:-198.18.0.1/15}"
 XRAY_CONFIG="${XRAY_CONFIG:-/etc/xray/config.json}"
 SOCKS_PROXY="${SOCKS_PROXY:-socks5://127.0.0.1:1080}"
 OUT_INTERFACE="${OUT_INTERFACE:-eth0}"
+# 1 = accept traffic from MikroTik (eth0) and send it into TUN
+GATEWAY_MODE="${GATEWAY_MODE:-1}"
 
 if [ ! -f "$XRAY_CONFIG" ]; then
   echo "error: xray config not found: $XRAY_CONFIG" >&2
@@ -20,8 +22,24 @@ fi
 ip addr replace "$TUN_ADDR" dev "$TUN_DEVICE"
 ip link set dev "$TUN_DEVICE" up
 
-# May fail without CAP_SYS_ADMIN / privileged — ignore
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1 || true
+sysctl -w net.ipv4.conf."$OUT_INTERFACE".rp_filter=0 >/dev/null 2>&1 || true
+
+if [ "$GATEWAY_MODE" = "1" ]; then
+  # Locally generated traffic (Xray → VLESS server) stays on main table via eth0 GW.
+  # Packets arriving from the router on eth0 are policy-routed into TUN.
+  ip route replace default dev "$TUN_DEVICE" table 100
+  ip rule del iif "$OUT_INTERFACE" lookup 100 2>/dev/null || true
+  ip rule add iif "$OUT_INTERFACE" lookup 100 priority 100
+
+  iptables -C FORWARD -i "$OUT_INTERFACE" -o "$TUN_DEVICE" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$OUT_INTERFACE" -o "$TUN_DEVICE" -j ACCEPT
+  iptables -C FORWARD -i "$TUN_DEVICE" -o "$OUT_INTERFACE" -j ACCEPT 2>/dev/null \
+    || iptables -A FORWARD -i "$TUN_DEVICE" -o "$OUT_INTERFACE" -j ACCEPT
+  iptables -t nat -C POSTROUTING -o "$TUN_DEVICE" -j MASQUERADE 2>/dev/null \
+    || iptables -t nat -A POSTROUTING -o "$TUN_DEVICE" -j MASQUERADE
+fi
 
 cleanup() {
   if [ -n "${XRAY_PID:-}" ] && kill -0 "$XRAY_PID" 2>/dev/null; then
@@ -34,7 +52,6 @@ trap cleanup EXIT INT TERM
 /usr/local/bin/xray run -config "$XRAY_CONFIG" &
 XRAY_PID=$!
 
-# Wait until Xray is alive (socks inbound ready soon after process start)
 i=0
 while [ "$i" -lt 20 ]; do
   if ! kill -0 "$XRAY_PID" 2>/dev/null; then
@@ -42,13 +59,11 @@ while [ "$i" -lt 20 ]; do
     wait "$XRAY_PID" || true
     exit 1
   fi
-  # brief settle for inbound bind
   i=$((i + 1))
   [ "$i" -ge 2 ] && break
   sleep 1
 done
 
-# Drop trap so EXIT does not kill xray when shell is replaced by exec
 trap - EXIT INT TERM
 
 exec /usr/local/bin/tun2socks \

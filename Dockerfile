@@ -46,9 +46,10 @@ RUN chmod 0755 /usr/local/bin/xray /usr/local/bin/tun2socks /usr/local/bin/entry
 
 # Mount your config on MikroTik: /etc/xray/config.json
 ENV TUN_DEVICE=tun0 \
-    TUN_ADDR=198.18.0.3/15 \
+    TUN_ADDR=198.18.0.1/15 \
     XRAY_CONFIG=/etc/xray/config.json \
     SOCKS_PROXY=socks5://127.0.0.1:1080 \
-    OUT_INTERFACE=eth0
+    OUT_INTERFACE=eth0 \
+    GATEWAY_MODE=1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
